@@ -11,6 +11,8 @@ class MotionJsonEditor:
     def __init__(self, root):
         self.curves = []
         self.rows = []
+        self._drag_data = {}
+
         self.root = root
         self.root.title("Motion Editor")
 
@@ -194,8 +196,42 @@ class MotionJsonEditor:
             x_ = (x[i] / max_x) * canvas_width
             y_ = canvas_height - (y[i] - min_y) / (max_y - min_y) * canvas_height
             points.extend([x_, y_])
+            self.create_draggable_oval(canvas, x_ - 5, y_ - 5, x_ + 5, y_ + 5, f"oval{i}", len(x))
 
-        canvas.create_line(points, fill="black")
+        canvas.create_line(points, fill="black", tags="curve")
+
+    def create_draggable_oval(self, canvas, x1, y1, x2, y2, tag, l):
+        # 创建空心圆，每个圆有一个唯一的tag
+        oval_id = canvas.create_oval(x1, y1, x2, y2, outline="black", fill="white", tags=(tag, "draggable"))
+        # 为每个圆分别绑定拖动事件
+        canvas.tag_bind(oval_id, "<Button-1>", lambda event, oval_tag=tag: self.on_drag_start(event, oval_tag))
+        canvas.tag_bind(oval_id, "<B1-Motion>", lambda event, oval_tag=tag: self.on_drag_move(event, oval_tag, l))
+
+    def on_drag_start(self, event, tag):
+        # 记录开始拖动的圆的起始位置
+        self._drag_data[tag] = {"x": event.x, "y": event.y}
+
+    def on_drag_move(self, event, tag, l):
+        # 计算移动的距离
+        delta_x = event.x - self._drag_data[tag]["x"]
+        delta_y = event.y - self._drag_data[tag]["y"]
+        # 根据tag移动对应的圆
+        self.bottom_canvas.move(tag, delta_x, delta_y)
+        # 更新此圆的位置以备后续拖动
+        self._drag_data[tag] = {"x": event.x, "y": event.y}
+        # 每次拖动后都重新绘制曲线
+        self.redraw_curve(l)
+
+    def redraw_curve(self, l):
+        # 重新构建曲线点列表
+        points = []
+        for tag in range(l):
+            # 获取每个圆的位置并加入点列表
+            x1, y1, x2, y2 = self.bottom_canvas.coords(f"oval{tag}")
+            points.extend([(x1 + x2) / 2, (y1 + y2) / 2])
+        # 使用新的点列表重新绘制曲线
+        self.bottom_canvas.delete("curve")
+        self.bottom_canvas.create_line(points, fill="black", tags="curve")
 
     def edit_Curve(self, idx):
         self.draw_curve(self.bottom_canvas, idx)

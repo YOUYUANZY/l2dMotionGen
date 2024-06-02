@@ -2,18 +2,30 @@ import numpy as np
 
 
 def linear(x0, y0, x1, y1, x, y):
-    x.extend([x0, x1])
-    y.extend([y0, y1])
+    if len(x) == 0:
+        x.extend([x0, x1])
+        y.extend([y0, y1])
+    else:
+        x.extend([x1])
+        y.extend([y1])
 
 
 def stepped(x0, y0, x1, y1, x, y):
-    x.extend([x0, x0, x1])
-    y.extend([y0, y1, y1])
+    if len(x) == 0:
+        x.extend([x0, x0, x1])
+        y.extend([y0, y1, y1])
+    else:
+        x.extend([x0, x1])
+        y.extend([y1, y1])
 
 
 def inverse_stepped(x0, y0, x1, y1, x, y):
-    x.extend([x0, x1, x1])
-    y.extend([y0, y0, y1])
+    if len(x) == 0:
+        x.extend([x0, x1, x1])
+        y.extend([y0, y0, y1])
+    else:
+        x.extend([x1, x1])
+        y.extend([y0, y1])
 
 
 def bezier(x0, y0, x1, y1, x2, y2, x3, y3, x, y):
@@ -22,8 +34,12 @@ def bezier(x0, y0, x1, y1, x2, y2, x3, y3, x, y):
                               3 * (1 - t) ** 2 * t * np.array([x1, y1]) +
                               3 * (1 - t) * t ** 2 * np.array([x2, y2]) +
                               t ** 3 * np.array([x3, y3]) for t in t_values])
-    x.extend(bezier_points[:, 0])
-    y.extend(bezier_points[:, 1])
+    if len(x) == 0:
+        x.extend(bezier_points[:, 0])
+        y.extend(bezier_points[:, 1])
+    else:
+        x.extend(bezier_points[1:, 0])
+        y.extend(bezier_points[1:, 1])
 
 
 def segmentsIndex(segment):
