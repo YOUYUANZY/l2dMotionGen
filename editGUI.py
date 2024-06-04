@@ -1,10 +1,12 @@
 import json
+import math
 import tkinter as tk
 from tkinter import ttk, filedialog
 
 from ProcessJsonData import loadJsonData, saveMotionJson
 from motionJson import MotionJson, MotionCurve
 from utils.BezierCurve import segmentsIndex
+from utils.CurveProcess import getCountInfo
 from utils.GUIclasses import GUI_Canvas
 from utils.utils import getOvalId, getCurveInit
 
@@ -34,6 +36,7 @@ class MotionJsonEditor(tk.Tk):
         if self.curve_idx != -1:
             self.edit_Curve(self.curve_idx)
 
+    # 加载Json
     def loadJson(self):
         file_path = filedialog.askopenfilename(
             title="Open JSON File",
@@ -57,7 +60,9 @@ class MotionJsonEditor(tk.Tk):
                     self.curves.append(curve)
                     x, _ = segmentsIndex(curve.segments)
                     self.add_row(default_att=curve.id, default_kpNum=len(x), add_curve=False)
+                self.motion.curves = []
 
+    # 保存Json
     def saveJson(self):
         self.motion.meta.loop = self.loop_var.get()
         save_path = filedialog.asksaveasfilename(
@@ -67,24 +72,34 @@ class MotionJsonEditor(tk.Tk):
         )
         if save_path == '':
             return
+        self.motion.curves = self.curves
+        curve_count, segment_count, point_count = getCountInfo(self.motion.curves)
+        self.motion.meta.curveCount = curve_count
+        self.motion.meta.totalSegmentCount = segment_count
+        self.motion.meta.totalPointCount = point_count
         saveMotionJson(self.motion, path=save_path)
 
+    # 设置版本
     def set_version(self, event):
         value = event.widget.get()
         self.motion.version = int(value)
 
+    # 设置时长
     def set_duration(self, event):
         value = event.widget.get()
         self.motion.meta.duration = float(value)
 
+    # 设置帧率
     def set_fps(self, event):
         value = event.widget.get()
         self.motion.meta.fps = float(value)
 
+    # 设置循环
     def set_loop(self, event):
         value = event.widget.get()
         self.motion.meta.fps = bool(value)
 
+    # 保存曲线
     def saveCurve(self):
         segment = []
         x, y = self.CurveCanvas_info.getRealPoint(self.keyPoints[0], self.keyPoints[1])
@@ -96,11 +111,13 @@ class MotionJsonEditor(tk.Tk):
             i += 2
         self.curves[self.curve_idx].segments = segment
 
+    # 重置曲线
     def resetCurve(self):
         num = int(len(self.keyPoints) / 2)
         self.curves[self.curve_idx].segments = getCurveInit(num, self.motion.meta.duration)
         self.edit_Curve(self.curve_idx)
 
+    # 基本功能块
     def baseBlock(self, frame):
         # Version
         ttk.Label(frame, text="Version:").grid(column=0, row=0, sticky=tk.W)
@@ -145,6 +162,7 @@ class MotionJsonEditor(tk.Tk):
         saveCurve.grid(column=0, row=6, sticky=tk.W)
         resetCurve.grid(column=1, row=6, sticky=tk.W)
 
+    # 创建窗口
     def create_widgets(self):
         main_frame = ttk.Frame(self)
         main_frame.pack(fill=tk.BOTH, expand=True)
@@ -190,9 +208,18 @@ class MotionJsonEditor(tk.Tk):
         curve_h_scrollbar.grid(row=2, column=0, columnspan=2, sticky='ew')
         self.CurveCanvas_op.config(xscrollcommand=curve_h_scrollbar.set, yscrollcommand=curve_v_scrollbar.set)
         self.CurveCanvas_op.bind('<Configure>', self.on_curve_configure)
+        self.CurveCanvas_op.bind('<MouseWheel>', self.on_mouse_wheel_curve)
 
         self.add_row()
 
+    # 鼠标滚轮
+    def on_mouse_wheel_curve(self, event):
+        if event.delta > 0:
+            self.CurveCanvas_op.yview_scroll(-2, 'units')  # 向上滚动
+        else:
+            self.CurveCanvas_op.yview_scroll(2, 'units')
+
+    # 添加一行属性
     def add_row(self, default_att='', default_kpNum=0, add_curve=True):
         index = len(self.rows)
         row_frame = ttk.Frame(self.scrollable_frame)
@@ -217,17 +244,20 @@ class MotionJsonEditor(tk.Tk):
         self.rows.append(row_frame)
         if add_curve:
             self.curves.append(MotionCurve())
-        self.update_scroll_region()
+        self.update_frame_region()
 
+    # 设置属性
     def set_att(self, event, idx):
         value = event.widget.get()
         self.curves[idx].id = str(value)
 
+    # 设置曲线节点数
     def set_kpNum(self, event, idx):
         value = event.widget.get()
         num = int(value)
         self.curves[idx].segments = getCurveInit(num, self.motion.meta.duration)
 
+    # 绘制曲线
     def draw_curve(self):
         segments = self.curves[self.curve_idx].segments
         self.CurveCanvas_op.delete("all")
@@ -239,6 +269,16 @@ class MotionJsonEditor(tk.Tk):
         self.CurveCanvas_info.maxY = max(int(max(y)) * 1.1, 1)
         self.CurveCanvas_info.minY = min(int(min(y)) * 1.1, 0)
 
+        for i in range(0, math.ceil(self.CurveCanvas_info.maxX), 1):
+            x1, y1 = self.CurveCanvas_info.getCanvasPoint(i, math.floor(self.CurveCanvas_info.minY)-1)
+            x2, y2 = self.CurveCanvas_info.getCanvasPoint(i, math.ceil(self.CurveCanvas_info.maxY)+1)
+            self.CurveCanvas_op.create_line([(x1, y1), (x2, y2)], tag='grid_line', fill='gray')
+
+        for i in range(math.floor(self.CurveCanvas_info.minY), math.ceil(self.CurveCanvas_info.maxY), 1):
+            x1, y1 = self.CurveCanvas_info.getCanvasPoint(0, i)
+            x2, y2 = self.CurveCanvas_info.getCanvasPoint(math.ceil(self.CurveCanvas_info.maxX), i)
+            self.CurveCanvas_op.create_line([(x1, y1), (x2, y2)], tag='grid_line', fill='gray')
+
         self.keyPoints = []
         for i in range(len(x)):
             x_, y_ = self.CurveCanvas_info.getCanvasPoint(x[i], y[i])
@@ -247,6 +287,7 @@ class MotionJsonEditor(tk.Tk):
 
         self.CurveCanvas_op.create_line(self.keyPoints, fill="black", tags="curve")
 
+    # 创建编辑节点
     def create_edit_oval(self, x1, y1, x2, y2, tag):
         # 创建空心圆，每个圆有一个唯一的tag
         oval_id = self.CurveCanvas_op.create_oval(x1, y1, x2, y2, outline="black", fill="white",
@@ -265,18 +306,21 @@ class MotionJsonEditor(tk.Tk):
         self.CurveCanvas_op.tag_bind(oval_id, "<Leave>",
                                      lambda event, oval_tag=tag: self.CurveCanvas_op.itemconfig(oval_tag, fill="white"))
 
+    # 获取节点位置
     def on_drag_start(self, event, tag):
         # 记录开始拖动的圆的起始位置
         self._drag_data[tag] = {"x": event.x, "y": event.y}
 
+    # 节点拖拽
     def on_drag_move(self, event, tag):
         XMaxLimit = self.motion.meta.duration
+        XMaxLimit, _ = self.CurveCanvas_info.getCanvasPoint(XMaxLimit, 0)
         idx = getOvalId(tag)
         # 计算限制范围
         tl = f"oval{idx - 1}"
         XL = 0 if idx == 0 else self._drag_data[tl]["x"]
         tr = f"oval{idx + 1}"
-        XR = XMaxLimit if idx == len(self.keyPoints) / 2 else self._drag_data[tr]["x"]
+        XR = XMaxLimit if idx == (len(self.keyPoints) / 2 - 1) else self._drag_data[tr]["x"]
         # 计算移动的距离
         delta_x = max(XL, min(XR, event.x)) - self._drag_data[tag]["x"]
         delta_y = max(0, min(self.CurveCanvas_info.H, event.y)) - self._drag_data[tag]["y"]
@@ -289,6 +333,7 @@ class MotionJsonEditor(tk.Tk):
         # 每次拖动后都重新绘制曲线
         self.redraw_curve()
 
+    # 重绘曲线
     def redraw_curve(self):
         # 重新构建曲线点列表
         L = int(len(self.keyPoints) / 2)
@@ -301,32 +346,37 @@ class MotionJsonEditor(tk.Tk):
         self.CurveCanvas_op.delete("curve")
         self.CurveCanvas_op.create_line(self.keyPoints, fill="black", tags="curve")
 
+    # 编辑曲线
     def edit_Curve(self, idx):
         self.curve_idx = idx
         self.draw_curve()
         self.update_curve_region()
 
+    # 删除一行属性
     def remove_last_row(self):
         if self.rows:
             self.curves.pop()
             row = self.rows.pop()
             row.destroy()
-            self.update_scroll_region()
+            self.update_frame_region()
 
+    # 删除所有属性
     def clear_all_rows_and_curves(self):
         for row_frame in self.rows:
             row_frame.destroy()
 
         self.rows.clear()
         self.curves.clear()
-        self.update_scroll_region()
+        self.update_frame_region()
 
-    def update_scroll_region(self):
+    # 更新属性滑动区域
+    def update_frame_region(self):
         self.canvas.configure(scrollregion=self.canvas.bbox("all"))
 
     def on_frame_configure(self, event):
         self.canvas.configure(scrollregion=self.canvas.bbox("all"))
 
+    # 更新曲线滑动区域
     def update_curve_region(self):
         self.CurveCanvas_op.config(scrollregion=self.CurveCanvas_op.bbox("all"))
 
