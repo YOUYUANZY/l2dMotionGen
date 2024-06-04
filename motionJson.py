@@ -5,6 +5,9 @@ class MotionCurve:
         self.fadeInTime = -1.0
         self.fadeOutTime = -1.0
         self.segments = []
+        self.remark = ''
+        self.maxValue = 0
+        self.minValue = 0
 
     def loadCurve(self, Curve):
         self.target = Curve['Target']

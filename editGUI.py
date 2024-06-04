@@ -3,7 +3,7 @@ import math
 import tkinter as tk
 from tkinter import ttk, filedialog
 
-from ProcessJsonData import loadJsonData, saveMotionJson
+from ProcessJsonData import saveMotionJson
 from motionJson import MotionJson, MotionCurve
 from utils.BezierCurve import segmentsIndex
 from utils.CurveProcess import getCountInfo
@@ -26,6 +26,8 @@ class MotionJsonEditor(tk.Tk):
         self.CurveCanvas_op = None
         # 曲线关键点
         self.keyPoints = []
+        # 曲线是否变化
+        self.curve_edited = False
 
         self.motion = MotionJson()
         self.title('Motion edit')
@@ -57,9 +59,13 @@ class MotionJsonEditor(tk.Tk):
 
                 self.clear_all_rows_and_curves()
                 for curve in self.motion.curves:
+                    x, y = segmentsIndex(curve.segments)
+                    maxV = math.ceil(max(y))
+                    minV = math.floor(min(y))
+                    curve.maxValue = maxV
+                    curve.minValue = minV
                     self.curves.append(curve)
-                    x, _ = segmentsIndex(curve.segments)
-                    self.add_row(default_att=curve.id, default_kpNum=len(x), add_curve=False)
+                    self.add_row(default_att=curve.id, default_kpNum=len(x), add_curve=False, max_v=maxV, min_v=minV)
                 self.motion.curves = []
 
     # 保存Json
@@ -101,6 +107,9 @@ class MotionJsonEditor(tk.Tk):
 
     # 保存曲线
     def saveCurve(self):
+        self.curve_edited = False
+        if len(self.keyPoints) == 0:
+            return
         segment = []
         x, y = self.CurveCanvas_info.getRealPoint(self.keyPoints[0], self.keyPoints[1])
         segment.extend([x, y])
@@ -209,8 +218,14 @@ class MotionJsonEditor(tk.Tk):
         self.CurveCanvas_op.config(xscrollcommand=curve_h_scrollbar.set, yscrollcommand=curve_v_scrollbar.set)
         self.CurveCanvas_op.bind('<Configure>', self.on_curve_configure)
         self.CurveCanvas_op.bind('<MouseWheel>', self.on_mouse_wheel_curve)
+        self.CurveCanvas_op.bind('<Leave>', self.leave_curve)
 
         self.add_row()
+
+    # 离开曲线区域自动保存
+    def leave_curve(self, event):
+        if self.curve_edited:
+            self.saveCurve()
 
     # 鼠标滚轮
     def on_mouse_wheel_curve(self, event):
@@ -220,31 +235,71 @@ class MotionJsonEditor(tk.Tk):
             self.CurveCanvas_op.yview_scroll(2, 'units')
 
     # 添加一行属性
-    def add_row(self, default_att='', default_kpNum=0, add_curve=True):
+    def add_row(self, default_att='', default_kpNum=0, add_curve=True, max_v=1, min_v=0):
         index = len(self.rows)
         row_frame = ttk.Frame(self.scrollable_frame)
 
         ttk.Label(row_frame, text="Attribute:").pack(side=tk.LEFT)
-        att = ttk.Entry(row_frame)
+        att = ttk.Entry(row_frame, width=15)
         att.insert(0, default_att)
         att.pack(side=tk.LEFT)
         att.bind("<Return>", lambda event, idx=index: self.set_att(event, idx))
         att.bind("<FocusOut>", lambda event, idx=index: self.set_att(event, idx))
 
         ttk.Label(row_frame, text="KeyPoints:").pack(side=tk.LEFT)
-        kpNum = ttk.Entry(row_frame)
+        kpNum = ttk.Entry(row_frame, width=4)
         kpNum.insert(0, default_kpNum)
         kpNum.pack(side=tk.LEFT)
         kpNum.bind("<Return>", lambda event, idx=index: self.set_kpNum(event, idx))
         kpNum.bind("<FocusOut>", lambda event, idx=index: self.set_kpNum(event, idx))
 
-        ttk.Button(row_frame, text="edit", command=lambda idx=index: self.edit_Curve(idx)).pack(side=tk.LEFT)
+        ttk.Label(row_frame, text="remark:").pack(side=tk.LEFT)
+        remark = ttk.Entry(row_frame, width=15)
+        remark.pack(side=tk.LEFT)
+        remark.bind("<Return>", lambda event, idx=index: self.set_remark(event, idx))
+        remark.bind("<FocusOut>", lambda event, idx=index: self.set_remark(event, idx))
+
+        ttk.Label(row_frame, text="max:").pack(side=tk.LEFT)
+        maxV = ttk.Entry(row_frame, width=3)
+        maxV.insert(0, max_v)
+        maxV.pack(side=tk.LEFT)
+        maxV.bind("<Return>", lambda event, idx=index: self.set_maxV(event, idx))
+        maxV.bind("<FocusOut>", lambda event, idx=index: self.set_maxV(event, idx))
+
+        ttk.Label(row_frame, text="min:").pack(side=tk.LEFT)
+        minV = ttk.Entry(row_frame, width=3)
+        minV.insert(0, min_v)
+        minV.pack(side=tk.LEFT)
+        minV.bind("<Return>", lambda event, idx=index: self.set_minV(event, idx))
+        minV.bind("<FocusOut>", lambda event, idx=index: self.set_minV(event, idx))
+
+        ttk.Button(row_frame, text="points edit", command=lambda idx=index: self.edit_Curve(idx)).pack(side=tk.LEFT)
+        row_frame.pack(side=tk.TOP, fill=tk.X)
+
+        ttk.Button(row_frame, text="random edit", command=lambda idx=index: self.edit_Curve(idx)).pack(side=tk.LEFT)
         row_frame.pack(side=tk.TOP, fill=tk.X)
 
         self.rows.append(row_frame)
         if add_curve:
             self.curves.append(MotionCurve())
         self.update_frame_region()
+
+    # 设置备注
+    def set_remark(self, event, idx):
+        value = event.widget.get()
+        self.curves[idx].remark = str(value)
+
+    # 设置最大值
+    def set_maxV(self, event, idx):
+        value = event.widget.get()
+        self.curves[idx].maxValue = math.ceil(float(value))
+        self.edit_Curve(idx)
+
+    # 设置最小值
+    def set_minV(self, event, idx):
+        value = event.widget.get()
+        self.curves[idx].minValue = math.floor(float(value))
+        self.edit_Curve(idx)
 
     # 设置属性
     def set_att(self, event, idx):
@@ -260,24 +315,29 @@ class MotionJsonEditor(tk.Tk):
     # 绘制曲线
     def draw_curve(self):
         segments = self.curves[self.curve_idx].segments
+        if len(segments) == 0:
+            return
         self.CurveCanvas_op.delete("all")
         self.CurveCanvas_info.W = self.CurveCanvas_op.winfo_width()
         self.CurveCanvas_info.H = self.CurveCanvas_op.winfo_height()
 
         x, y = segmentsIndex(segments)
-        self.CurveCanvas_info.maxX = max(max(x) * 1.1, 1)
-        self.CurveCanvas_info.maxY = max(int(max(y)) * 1.1, 1)
-        self.CurveCanvas_info.minY = min(int(min(y)) * 1.1, 0)
+        self.CurveCanvas_info.maxX = self.motion.meta.duration
+        self.CurveCanvas_info.maxY = max(self.curves[self.curve_idx].maxValue, 1)
+        self.CurveCanvas_info.minY = min(self.curves[self.curve_idx].minValue, 0)
 
-        for i in range(0, math.ceil(self.CurveCanvas_info.maxX), 1):
-            x1, y1 = self.CurveCanvas_info.getCanvasPoint(i, math.floor(self.CurveCanvas_info.minY)-1)
-            x2, y2 = self.CurveCanvas_info.getCanvasPoint(i, math.ceil(self.CurveCanvas_info.maxY)+1)
+        for i in range(0, int(self.CurveCanvas_info.maxX), 1):
+            x1, y1 = self.CurveCanvas_info.getCanvasPoint(i, self.CurveCanvas_info.minY - 1)
+            x2, y2 = self.CurveCanvas_info.getCanvasPoint(i, self.CurveCanvas_info.maxY + 1)
             self.CurveCanvas_op.create_line([(x1, y1), (x2, y2)], tag='grid_line', fill='gray')
 
-        for i in range(math.floor(self.CurveCanvas_info.minY), math.ceil(self.CurveCanvas_info.maxY), 1):
+        for i in range(int(self.CurveCanvas_info.minY), int(self.CurveCanvas_info.maxY), 1):
             x1, y1 = self.CurveCanvas_info.getCanvasPoint(0, i)
-            x2, y2 = self.CurveCanvas_info.getCanvasPoint(math.ceil(self.CurveCanvas_info.maxX), i)
-            self.CurveCanvas_op.create_line([(x1, y1), (x2, y2)], tag='grid_line', fill='gray')
+            x2, y2 = self.CurveCanvas_info.getCanvasPoint(self.CurveCanvas_info.maxX, i)
+            if i == 0:
+                self.CurveCanvas_op.create_line([(x1, y1), (x2, y2)], tag='grid_line', fill='black')
+            else:
+                self.CurveCanvas_op.create_line([(x1, y1), (x2, y2)], tag='grid_line', fill='gray')
 
         self.keyPoints = []
         for i in range(len(x)):
@@ -313,6 +373,7 @@ class MotionJsonEditor(tk.Tk):
 
     # 节点拖拽
     def on_drag_move(self, event, tag):
+        self.curve_edited = True
         XMaxLimit = self.motion.meta.duration
         XMaxLimit, _ = self.CurveCanvas_info.getCanvasPoint(XMaxLimit, 0)
         idx = getOvalId(tag)
@@ -348,6 +409,8 @@ class MotionJsonEditor(tk.Tk):
 
     # 编辑曲线
     def edit_Curve(self, idx):
+        if idx >= len(self.rows) or idx < 0:
+            return
         self.curve_idx = idx
         self.draw_curve()
         self.update_curve_region()
@@ -355,6 +418,8 @@ class MotionJsonEditor(tk.Tk):
     # 删除一行属性
     def remove_last_row(self):
         if self.rows:
+            if self.curve_idx == len(self.rows)-1:
+                self.curve_idx = -1
             self.curves.pop()
             row = self.rows.pop()
             row.destroy()
